@@ -1,0 +1,163 @@
+name: guacamole-gateway
+
+services:
+  ldap:
+    build: ./ldap
+    environment:
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD:?Copy .env.example to .env first}
+      BOB_PASSWORD: ${BOB_PASSWORD:?Set BOB_PASSWORD in .env}
+      ALICE_PASSWORD: ${ALICE_PASSWORD:?Set ALICE_PASSWORD in .env}
+      NPA_DESKTOP_PASSWORD: ${NPA_DESKTOP_PASSWORD:?Set NPA_DESKTOP_PASSWORD in .env}
+      NPA_SSH1_PASSWORD: ${NPA_SSH1_PASSWORD:?Set NPA_SSH1_PASSWORD in .env}
+      NPA_SSH2_PASSWORD: ${NPA_SSH2_PASSWORD:?Set NPA_SSH2_PASSWORD in .env}
+    volumes:
+      - ldap-data:/var/lib/ldap
+    networks: [directory]
+    healthcheck:
+      test: [CMD-SHELL, 'ldapwhoami -x -H ldap://127.0.0.1:389 -D "cn=admin,dc=example,dc=org" -w "$${LDAP_ADMIN_PASSWORD}" >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  guacd:
+    image: guacamole/guacd:1.6.0
+    networks: [runtime]
+    healthcheck:
+      test: [CMD-SHELL, "nc -z 127.0.0.1 4822"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  guacamole:
+    image: guacamole/guacamole:1.6.0
+    environment:
+      GUACD_HOSTNAME: guacd
+      GUACD_PORT: "4822"
+      LDAP_ENABLED: "true"
+      LDAP_HOSTNAME: ldap
+      LDAP_PORT: "389"
+      LDAP_ENCRYPTION_METHOD: none
+      LDAP_USER_BASE_DN: ou=people,dc=example,dc=org
+      LDAP_USERNAME_ATTRIBUTE: uid
+      LDAP_USER_SEARCH_FILTER: (objectClass=inetOrgPerson)
+      LDAP_GROUP_BASE_DN: ou=groups,dc=example,dc=org
+      LDAP_GROUP_NAME_ATTRIBUTE: cn
+      LDAP_GROUP_SEARCH_FILTER: (objectClass=groupOfNames)
+      LDAP_MEMBER_ATTRIBUTE: member
+      LDAP_MEMBER_ATTRIBUTE_TYPE: dn
+      LDAP_CONFIG_BASE_DN: ou=connections,dc=example,dc=org
+      # Direct user-DN binds; no LDAP admin/search password in this container.
+      # There is deliberately no JDBC extension or user-mapping.xml.
+    ports:
+      - "127.0.0.1:${PORTAL_PORT:-8080}:8080"
+    networks: [web, directory, runtime]
+    depends_on:
+      ldap:
+        condition: service_healthy
+      guacd:
+        condition: service_healthy
+      linux-desktop:
+        condition: service_healthy
+      linux-server-1:
+        condition: service_healthy
+      linux-server-2:
+        condition: service_healthy
+    healthcheck:
+      # TCP readiness; the smoke test waits for the actual Guacamole API.
+      test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 40s
+    restart: unless-stopped
+
+  linux-desktop:
+    build: ./targets/desktop
+    hostname: linux-desktop
+    environment:
+      NPA_PASSWORD: ${NPA_DESKTOP_PASSWORD:?Set NPA_DESKTOP_PASSWORD in .env}
+    volumes:
+      - desktop-home:/home/npa_desktop
+    networks: [runtime]
+    shm_size: 256mb
+    init: true
+    healthcheck:
+      test: [CMD, bash, -c, "pgrep -x xrdp >/dev/null && pgrep -x xrdp-sesman >/dev/null && echo > /dev/tcp/127.0.0.1/3389 && echo > /dev/tcp/127.0.0.1/3350"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  linux-server-1:
+    build:
+      context: ./targets/ssh
+      args:
+        NPA_USER: npa_ssh1
+    hostname: linux-server-1
+    environment:
+      NPA_PASSWORD: ${NPA_SSH1_PASSWORD:?Set NPA_SSH1_PASSWORD in .env}
+    volumes:
+      - ssh1-home:/home/npa_ssh1
+      - ssh1-keys:/etc/ssh/host_keys
+    networks: [runtime]
+    init: true
+    healthcheck:
+      test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/22"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  linux-server-2:
+    build:
+      context: ./targets/ssh
+      args:
+        NPA_USER: npa_ssh2
+    hostname: linux-server-2
+    environment:
+      NPA_PASSWORD: ${NPA_SSH2_PASSWORD:?Set NPA_SSH2_PASSWORD in .env}
+    volumes:
+      - ssh2-home:/home/npa_ssh2
+      - ssh2-keys:/etc/ssh/host_keys
+    networks: [runtime]
+    init: true
+    healthcheck:
+      test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/22"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  verify:
+    image: python:3.12-alpine
+    profiles: [test]
+    volumes:
+      - ./tests:/tests:ro
+    environment:
+      GUAC_URL: http://guacamole:8080/guacamole
+      BOB_PASSWORD: ${BOB_PASSWORD:?Set BOB_PASSWORD in .env}
+      ALICE_PASSWORD: ${ALICE_PASSWORD:?Set ALICE_PASSWORD in .env}
+    networks: [web]
+    depends_on:
+      guacamole:
+        condition: service_healthy
+    entrypoint: [python, -u, /tests/smoke.py]
+
+networks:
+  web:
+  directory:
+    internal: true
+  runtime:
+    internal: true
+
+volumes:
+  ldap-data:
+  desktop-home:
+  ssh1-home:
+  ssh2-home:
+  ssh1-keys:
+  ssh2-keys:

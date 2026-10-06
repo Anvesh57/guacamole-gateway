@@ -1,0 +1,91 @@
+dn: dc=example,dc=org
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+dc: example
+o: Gateway Playground
+
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=connections,dc=example,dc=org
+objectClass: organizationalUnit
+ou: connections
+
+dn: uid=bob,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob
+sn: Bob
+displayName: Bob
+userPassword:: @@BOB_PASSWORD_HASH_B64@@
+
+dn: uid=alice,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice
+sn: Alice
+displayName: Alice
+userPassword:: @@ALICE_PASSWORD_HASH_B64@@
+
+dn: cn=Desktop users,ou=groups,dc=example,dc=org
+objectClass: groupOfNames
+cn: Desktop users
+member: uid=alice,ou=people,dc=example,dc=org
+
+dn: cn=SSH users,ou=groups,dc=example,dc=org
+objectClass: groupOfNames
+cn: SSH users
+member: uid=bob,ou=people,dc=example,dc=org
+
+# guacConfigGroup inherits the mandatory member attribute from groupOfNames.
+# A group DN satisfies that schema requirement without granting any user
+# direct access. seeAlso is the actual Guacamole group authorization mapping.
+dn: cn=Linux Desktop,ou=connections,dc=example,dc=org
+objectClass: guacConfigGroup
+cn: Linux Desktop
+member: cn=Desktop users,ou=groups,dc=example,dc=org
+seeAlso: cn=Desktop users,ou=groups,dc=example,dc=org
+guacConfigProtocol: rdp
+guacConfigParameter: hostname=linux-desktop
+guacConfigParameter: port=3389
+guacConfigParameter: username=npa_desktop
+guacConfigParameter:: @@DESKTOP_PASSWORD_PARAMETER_B64@@
+guacConfigParameter: security=tls
+guacConfigParameter: ignore-cert=true
+guacConfigParameter: resize-method=display-update
+guacConfigParameter: disable-audio=true
+guacConfigParameter: server-layout=en-us-qwerty
+
+dn: cn=Linux Server 1,ou=connections,dc=example,dc=org
+objectClass: guacConfigGroup
+cn: Linux Server 1
+member: cn=SSH users,ou=groups,dc=example,dc=org
+seeAlso: cn=SSH users,ou=groups,dc=example,dc=org
+guacConfigProtocol: ssh
+guacConfigParameter: hostname=linux-server-1
+guacConfigParameter: port=22
+guacConfigParameter: username=npa_ssh1
+guacConfigParameter:: @@SSH1_PASSWORD_PARAMETER_B64@@
+guacConfigParameter: font-name=monospace
+guacConfigParameter: font-size=14
+guacConfigParameter: color-scheme=gray-black
+
+dn: cn=Linux Server 2,ou=connections,dc=example,dc=org
+objectClass: guacConfigGroup
+cn: Linux Server 2
+member: cn=SSH users,ou=groups,dc=example,dc=org
+seeAlso: cn=SSH users,ou=groups,dc=example,dc=org
+guacConfigProtocol: ssh
+guacConfigParameter: hostname=linux-server-2
+guacConfigParameter: port=22
+guacConfigParameter: username=npa_ssh2
+guacConfigParameter:: @@SSH2_PASSWORD_PARAMETER_B64@@
+guacConfigParameter: font-name=monospace
+guacConfigParameter: font-size=14
+guacConfigParameter: color-scheme=gray-black

@@ -1,0 +1,42 @@
+include /etc/ldap/schema/core.schema
+include /etc/ldap/schema/cosine.schema
+include /etc/ldap/schema/inetorgperson.schema
+include /etc/ldap/schema/guacConfigGroup.schema
+
+pidfile /run/slapd/slapd.pid
+argsfile /run/slapd/slapd.args
+modulepath /usr/lib/ldap
+moduleload back_mdb
+
+database mdb
+maxsize 1073741824
+suffix "dc=example,dc=org"
+rootdn "cn=admin,dc=example,dc=org"
+rootpw @@ROOT_PASSWORD_HASH@@
+directory /var/lib/ldap
+index objectClass eq
+index uid,cn eq
+index member,seeAlso eq
+
+# Passwords permit bind authentication, not reads or self-service updates.
+access to attrs=userPassword
+    by anonymous auth
+    by * none
+
+# Protect connection parameters with the same LDAP groups used by Guacamole.
+# Only the root DN may write. Ordinary users have read-only directory access.
+access to dn.exact="cn=Linux Desktop,ou=connections,dc=example,dc=org"
+    by group.exact="cn=Desktop users,ou=groups,dc=example,dc=org" read
+    by * none
+
+access to dn.exact="cn=Linux Server 1,ou=connections,dc=example,dc=org"
+    by group.exact="cn=SSH users,ou=groups,dc=example,dc=org" read
+    by * none
+
+access to dn.exact="cn=Linux Server 2,ou=connections,dc=example,dc=org"
+    by group.exact="cn=SSH users,ou=groups,dc=example,dc=org" read
+    by * none
+
+access to *
+    by users read
+    by * none
